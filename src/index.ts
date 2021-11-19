@@ -28,18 +28,25 @@ interface Argument {
     }
 }
 
-interface Selection {
-    kind: string
-    alias: {
-        kind: string
-        value: string
-    }
+export interface Selection {
+  kind: string;
+  typeCondition?: {
+    kind: string;
     name: {
-        kind: string
-        value: string
-    }
-    arguments?: Argument[]
-    selectionSet?: SelectionSet
+      kind: string;
+      value: string;
+    };
+  };
+  alias: {
+    kind: string;
+    value: string;
+  };
+  name: {
+    kind: string;
+    value: string;
+  };
+  arguments?: Argument[];
+  selectionSet?: SelectionSet;
 }
 
 interface SelectionSet {
@@ -122,29 +129,47 @@ const getArguments = (args) => {
 }
 
 const getSelections = (selections: Selection[]) => {
-    const selObj = {}
-    selections.forEach((selection) => {
-        const selectionHasAlias = selection.alias
-        const selectionName = selectionHasAlias
-            ? selection.alias.value
-            : selection.name.value
-        if (selection.selectionSet) {
-            selObj[selectionName] = getSelections(
-                selection.selectionSet.selections
-            )
-            if (selectionHasAlias) {
-                selObj[selection.alias.value].__aliasFor = selection.name.value
-            }
+  const selObj: variablesObject = {};
+
+  selections.forEach((selection) => {
+    /* start supporting InlineFragments */
+    if (selection.kind === 'InlineFragment') {
+      if (selection.selectionSet) {
+        selObj.__on = getSelections(selection.selectionSet.selections);
+      }
+      selObj.__on = {
+        ...selObj,
+        __typeName: `${selection.typeCondition.name.value}`,
+      };
+      /* end supporting InlineFragments */
+    } else {
+      const selectionHasAlias = selection.alias;
+      const selectionName = selectionHasAlias ? selection.alias.value : selection.name.value;
+
+      if (selection.selectionSet) {
+        selObj[selectionName] = getSelections(selection.selectionSet.selections);
+        if (selectionHasAlias) {
+          selObj[selection.alias.value].__aliasFor = selection.name.value;
         }
-        if (selection.arguments.length > 0) {
-            selObj[selectionName].__args = getArguments(selection.arguments)
+      }
+      if (selection.arguments.length > 0) {
+        selObj[selectionName].__args = getArguments(selection.arguments);
+      }
+      if (!selection.selectionSet && !selection.arguments.length) {
+        /* start supporting field with alias */
+        if (selectionHasAlias) {
+          selObj[selection.alias.value] = {
+            __aliasFor: selection.name.value,
+          };
+          /* end supporting field with alias */
+        } else {
+          selObj[selectionName] = true;
         }
-        if (!selection.selectionSet && !selection.arguments.length) {
-            selObj[selectionName] = true
-        }
-    })
-    return selObj
-}
+      }
+    }
+  });
+  return selObj;
+};
 
 const checkEachVariableInQueryIsDefined = (
     defintion: ActualDefinitionNode,
